@@ -16,20 +16,9 @@ const font_size = {
   large_extra: 350,
 };
 
-// found in multer documentation - sets destination of uploaded files and ensures consistency in file naming
-// const storage = multer.diskStorage({
-//   destination: function (req, file, cb) {
-//     cb(null, "uploads/"); // destination set to uploads folder
-//   },
-//   filename: function (req, file, cb) {
-//     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-//     cb(null, file.originalname); // maintains original file name and extention for easier readibility/comprehension
-//   },
-// });
-
 const storage = multer.memoryStorage(); // uploaded image is handled in memory rather than being saved to disk
 
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // file is uploaded using dest. and filename above and is limited to 10 MB
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.post("/thumbnail", upload.single("file"), async (req, res) => {
   // post request which utilzies multer middleware to upload file
@@ -59,11 +48,6 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
     // image processing utilizing sharp
 
     const buffer = req.file.buffer;
-
-    // const inputPath = req.file.path;
-    // const outputPath = `uploads/processed-${req.file.filename}`;
-
-    // const image = sharp(inputPath);
     const image = sharp(buffer);
     const metadata = await image.metadata();
 
@@ -79,8 +63,6 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
     const processedBuffer = await image
       .composite([{ input: Buffer.from(svgText), gravity: "center" }])
       .toBuffer();
-
-    // await sharp(buffer).toFile(outputPath);
 
     res.status(200).json({
       message: "Image uploaded successfully.",
