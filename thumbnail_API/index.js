@@ -1,12 +1,14 @@
 const express = require('express');
-const multer = require('multer');
+const multer = require('multer'); // multer is a library that enables file upload 
 const sharp = require('sharp');
 const bodyParser = require('body-parser');
 
-const app = express();
-app.use(express.json());
+
+const app = express(); // application object
+app.use(express.json()); // middleware to parse requests into JSON. Not necessary but could help handle edge cases
 const PORT = 8080;
 
+// text alignment and font size values
 const text_align = ['left', 'center', 'right'];
 const font_size = {
   small_extra: 150,
@@ -16,23 +18,25 @@ const font_size = {
   large_extra: 350
 };
 
+// found in multer documentation - sets destination of uploaded files and ensures consistency in file naming
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/')
+    cb(null, 'uploads/') // destination set to uploads folder
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, file.originalname)
+    cb(null, file.originalname) // maintains original file name and extention for easier readibility/comprehension
   }
 })
 
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // file is uploaded using dest. and filename above and is limited to 10 MB
 
-app.post('/thumbnail', upload.single('file'), async (req, res) => {
+app.post('/thumbnail', upload.single('file'), async (req, res) => { // post request which utilzies multer middleware to upload file
   res.json(req.file);
-  try {
-    const { text, textalign = 'center', fontsize = 'medium' } = req.body;
+  try { // try - catch block for error handling
+    const { text, textalign = 'center', fontsize = 'medium' } = req.body; // default text alignment and font size
 
+    // error handling
     if (!text_align.includes(textalign)) {
       return res.status(400).send({ error: "Invalid text alignment" });
     }
@@ -49,6 +53,7 @@ app.post('/thumbnail', upload.single('file'), async (req, res) => {
       return res.status(400).send({ error: "Text contains unsupported characters" });
     }
 
+    // image processing utilizing sharp
     const inputPath = req.file.path;
     const outputPath = `uploads/processed-${req.file.filename}`;
 
