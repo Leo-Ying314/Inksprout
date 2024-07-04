@@ -1,6 +1,8 @@
 const express = require("express");
 const multer = require("multer"); // multer is a library that enables file upload
 const sharp = require("sharp");
+const fs = require("fs");
+const { PassThrough } = require("stream");
 
 const app = express(); // application object
 app.use(express.json()); // middleware to parse requests into JSON. Not necessary but could help handle edge cases
@@ -16,9 +18,18 @@ const font_size = {
   large_extra: 350,
 };
 
-const storage = multer.memoryStorage(); // uploaded image is handled in memory rather than being saved to disk
+// found in multer documentation - sets destination of uploaded files and ensures consistency in file naming
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/"); // destination set to uploads folder
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, file.originalname); // maintains original file name and extention for easier readibility/comprehension
+  },
+});
 
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // file is uploaded using dest. and filename above and is limited to 10 MB
 
 app.post("/thumbnail", upload.single("file"), async (req, res) => {
   // post request which utilzies multer middleware to upload file
@@ -47,12 +58,11 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
 
     // image processing utilizing sharp
 
-    const buffer = req.file.buffer;
-    const image = sharp(buffer);
-    const metadata = await image.metadata();
+    const inputStream = fs.createReadStream(req.file.path);
+    const outputStream = new PassThrough();
 
     const svgText = `
-      <svg width="${metadata.width}" height="${metadata.height}">
+      <svg width="500" height="500">
         <style>
           .title { fill: black; font-size: ${font_size[fontsize]}px; font-family: Arial, sans-serif; }
         </style>
@@ -60,13 +70,27 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
       </svg>
     `;
 
-    const processedBuffer = await image
-      .composite([{ input: Buffer.from(svgText), gravity: "center" }])
-      .toBuffer();
+    const transformStream = sharp()
+      .composite([
+        {
+          input: Buffer.from(svgText),
+        },
+      ])
+      .toFormat("png");
 
-    res.status(200).json({
-      message: "Image uploaded successfully.",
-      data: processedBuffer.toString("base64"), // image returned as base64 string
+    inputStream.pipe(transformStream).pipe(outputStream);
+
+    let chunks = [];
+    outputStream.on("data", (chunk) => {
+      chunks.push(chunk);
+    });
+
+    outputStream.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      res.status(200).json({
+        message: "Image uploaded successfully.",
+        data: buffer.toString("base64"),
+      });
     });
   } catch (err) {
     console.error(err);
