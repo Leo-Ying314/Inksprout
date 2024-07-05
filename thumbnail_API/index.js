@@ -1,9 +1,8 @@
 const express = require("express");
 const sharp = require("sharp");
-const fs = require("fs");
 
 const app = express(); // application object
-app.use(express.json()); // middleware to parse requests into JSON. Not necessary but could help handle edge cases
+app.use(express.raw({ type: "application/octet-stream", limit: "10mb" }));
 const PORT = 8080;
 
 // text alignment and font size values
