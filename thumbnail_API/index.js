@@ -1,8 +1,6 @@
 const express = require("express");
-const multer = require("multer"); // multer is a library that enables file upload
 const sharp = require("sharp");
 const fs = require("fs");
-const { PassThrough } = require("stream");
 
 const app = express(); // application object
 app.use(express.json()); // middleware to parse requests into JSON. Not necessary but could help handle edge cases
@@ -18,20 +16,7 @@ const font_size = {
   large_extra: 350,
 };
 
-// found in multer documentation - sets destination of uploaded files and ensures consistency in file naming
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/"); // destination set to uploads folder
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.originalname); // maintains original file name and extention for easier readibility/comprehension
-  },
-});
-
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }); // file is uploaded using dest. and filename above and is limited to 10 MB
-
-app.post("/thumbnail", upload.single("file"), async (req, res) => {
+app.post("/thumbnail", async (req, res) => {
   // post request which utilzies multer middleware to upload file
   try {
     // try - catch block for error handling
