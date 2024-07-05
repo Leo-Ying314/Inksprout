@@ -17,46 +17,34 @@ const fontSizeValues = {
 };
 
 app.post("/thumbnail", async (req, res) => {
-  // Process request directly by turning it into chunks
-  let chunks = [];
-  req.on("data", (chunk) => {
-    chunks.push(chunk);
-  });
+  try {
+    const { text, textAlignment = "middle", fontSize = "medium" } = req.body; // Default text alignment and font size
 
-  // Log error when encountered
-  req.on("error", (err) => {
-    console.log(err);
-  });
+    // General error handling/invalid requests
+    if (!textAlignValues.includes(textAlignment)) {
+      return res.status(400).send({ error: "Invalid text alignment" });
+    }
 
-  req.on("end", async () => {
-    try {
-      const buffer = Buffer.concat(chunks); // Concatenating chunks to create buffer
+    if (!fontSizeValues[fontSize]) {
+      return res.status(400).send({ error: "Invalid font size" });
+    }
 
-      const image = sharp(buffer); // Using sharp/image manipulation on created buffer
-      const metaData = await image.metadata(); // Metadata to set height and width of text overlay (reference svgText)
+    if (text.length > 100) {
+      return res.status(400).send("Text is too long");
+    }
 
-      const { text, textAlignment = "middle", fontSize = "medium" } = req.body; // Default text alignment and font size
+    if (/[^\w\s.,!?-]/.test(text)) {
+      return res
+        .status(400)
+        .send({ error: "Text contains unsupported characters" });
+    }
 
-      // General error handling/invalid requests
-      if (!textAlignValues.includes(textAlignment)) {
-        return res.status(400).send({ error: "Invalid text alignment" });
-      }
+    const buffer = req.body; // Direct access of raw binary data from request body
 
-      if (!fontSizeValues[fontSize]) {
-        return res.status(400).send({ error: "Invalid font size" });
-      }
+    const image = sharp(buffer); // Using sharp/image manipulation on created buffer
+    const metaData = await image.metadata(); // Metadata to set height and width of text overlay (reference svgText)
 
-      if (text.length > 100) {
-        return res.status(400).send("Text is too long");
-      }
-
-      if (/[^\w\s.,!?-]/.test(text)) {
-        return res
-          .status(400)
-          .send({ error: "Text contains unsupported characters" });
-      }
-
-      const svgText = `
+    const svgText = `
       <svg width="${metaData.width}" height="${metaData.height}">
         <style>
           .title { fill: black; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
@@ -64,26 +52,25 @@ app.post("/thumbnail", async (req, res) => {
         <text x="50%" y="50%" text-anchor="${textAlignment}" class="title" dy=".3em">${text}</text>
       </svg>
     `;
-      
-      // Create output image, which is subsequently pushed to the response object as base64
-      const outputImage = await image
-        .composite([
-          {
-            input: Buffer.from(svgText),
-          },
-        ])
-        .toFormat("png");
-      
-      // Response object
-      res.status(200).json({
-        message: "Image uploaded successfully",
-        data: outputImage.toString("base64"),
-      });
-    } catch {
-      console.error(err);
-      res.status(500).send("Server error");
-    }
-  });
+
+    // Create output image, which is subsequently pushed to the response object as base64
+    const outputImage = await image
+      .composite([
+        {
+          input: Buffer.from(svgText),
+        },
+      ])
+      .toFormat("png");
+
+    // Response object
+    res.status(200).json({
+      message: "Image uploaded successfully",
+      data: outputImage.toString("base64"),
+    });
+  } catch {
+    console.error(err);
+    res.status(500).send("Server error");
+  }
 });
 
 app.listen(PORT, () => {
