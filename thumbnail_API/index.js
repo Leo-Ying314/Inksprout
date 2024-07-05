@@ -17,25 +17,27 @@ const fontSizeValues = {
 };
 
 app.post("/thumbnail", async (req, res) => {
+  // Process request directly by turning it into chunks
   let chunks = [];
   req.on("data", (chunk) => {
     chunks.push(chunk);
   });
 
+  // Log error when encountered
   req.on("error", (err) => {
     console.log(err);
   });
 
   req.on("end", async () => {
     try {
-      const buffer = Buffer.concat(chunks);
+      const buffer = Buffer.concat(chunks); // Concatenating chunks to create buffer
 
-      const image = sharp(buffer);
-      const metaData = await image.metadata();
+      const image = sharp(buffer); // Using sharp/image manipulation on created buffer
+      const metaData = await image.metadata(); // Metadata to set height and width of text overlay (reference svgText)
 
-      const { text, textAlignment = "middle", fontSize = "medium" } = req.body; // default text alignment and font size
+      const { text, textAlignment = "middle", fontSize = "medium" } = req.body; // Default text alignment and font size
 
-      // error handling
+      // General error handling/invalid requests
       if (!textAlignValues.includes(textAlignment)) {
         return res.status(400).send({ error: "Invalid text alignment" });
       }
@@ -62,19 +64,20 @@ app.post("/thumbnail", async (req, res) => {
         <text x="50%" y="50%" text-anchor="${textalign}" class="title" dy=".3em">${text}</text>
       </svg>
     `;
-
-      const outputBuffer = await image
+      
+      // Create output image, which is subsequently pushed to the response object as base64
+      const outputImage = await image
         .composite([
           {
             input: Buffer.from(svgText),
           },
         ])
-        .toFormat("png")
-        //.toBuffer();
-
+        .toFormat("png");
+      
+      // Response object
       res.status(200).json({
         message: "Image uploaded successfully",
-        data: outputBuffer.toString("base64"),
+        data: outputImage.toString("base64"),
       });
     } catch {
       console.error(err);
