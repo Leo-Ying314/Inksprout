@@ -59,9 +59,9 @@ app.post("/thumbnail", async (req, res) => {
       const svgText = `
       <svg width="${metaData.width}" height="${metaData.height}">
         <style>
-          .title { fill: black; font-size: ${font_size[fontsize]}px; font-family: Arial, sans-serif; }
+          .title { fill: black; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
         </style>
-        <text x="50%" y="50%" text-anchor="${textalign}" class="title" dy=".3em">${text}</text>
+        <text x="50%" y="50%" text-anchor="${textAlignment}" class="title" dy=".3em">${text}</text>
       </svg>
     `;
       
