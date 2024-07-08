@@ -1,31 +1,46 @@
 const express = require("express");
+const multer = require("multer");
 const sharp = require("sharp");
 
-const app = express(); // application object
-app.use(express.raw({ type: "application/octet-stream", limit: "10mb" }));
+const app = express();
 const PORT = 8080;
 
-// text alignment and font size values
 const textAlignValues = ["start", "middle", "end"];
 const fontSizeValues = {
   small_extra: 150,
   small: 200,
-  medium: 250,
-  large: 300,
-  large_extra: 350,
+  medium: 300,
+  large: 400,
+  large_extra: 500,
 };
 
-app.post("/thumbnail", async (req, res) => {
-  try {
-    const { text, textAlignment = "middle", fontSize = "medium" } = req.body; // Default text alignment and font size
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads/");
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, file.originalname);
+  },
+});
 
-    // General error handling/invalid requests
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.post("/thumbnail", upload.single("file"), async (req, res) => {
+  try {
+    const { text, textAlignment = "middle", fontSize = "medium" } = req.body;
+
     if (!textAlignValues.includes(textAlignment)) {
-      return res.status(400).send({ error: "Invalid text alignment" });
+      return res.status(400).send({
+        error: "Invalid text alignment. Valid inputs = {start, middle, end}",
+      });
     }
 
     if (!fontSizeValues[fontSize]) {
-      return res.status(400).send({ error: "Invalid font size" });
+      return res.status(400).send({
+        error:
+          "Invalid font size. Valid inputs = {small_extra, small, medium, large, large_extra}",
+      });
     }
 
     if (text.length > 100) {
@@ -38,13 +53,14 @@ app.post("/thumbnail", async (req, res) => {
         .send({ error: "Text contains unsupported characters" });
     }
 
-    const buffer = req.body; // Direct access of raw binary data from request body
+    const inputPath = req.file.path;
+    const outputPath = `uploads/processed-${req.file.filename}`;
 
-    const image = sharp(buffer); // Using sharp/image manipulation on created buffer
-    const metaData = await image.metadata(); // Metadata to set height and width of text overlay (reference svgText)
+    const image = sharp(inputPath);
+    const metadata = await image.metadata();
 
     const svgText = `
-      <svg width="${metaData.width}" height="${metaData.height}">
+      <svg width="${metadata.width}" height="${metadata.height}">
         <style>
           .title { fill: black; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
         </style>
@@ -52,21 +68,19 @@ app.post("/thumbnail", async (req, res) => {
       </svg>
     `;
 
-    // Create output image, which is subsequently pushed to the response object as base64
-    const outputImage = await image
-      .composite([
-        {
-          input: Buffer.from(svgText),
-        },
-      ])
-      .toFormat("png");
+    const buffer = await image
+      .composite([{ input: Buffer.from(svgText), gravity: "center" }])
+      .toBuffer();
 
-    // Response object
-    res.status(200).json({
-      message: "Image uploaded successfully",
-      data: outputImage.toString("base64"),
+    await sharp(buffer).toFile(outputPath);
+
+    res.download(outputPath, (err) => {
+      if (err) {
+        console.error(err);
+        res.status(500).send("Error processing image");
+      }
     });
-  } catch {
+  } catch (err) {
     console.error(err);
     res.status(500).send("Server error");
   }
