@@ -13,6 +13,17 @@ const fontSizeValues = {
   large: 400,
   large_extra: 500,
 };
+const colorValues = {
+  black: "#000000",
+  white: "#FFFFFF",
+  blue: "#0000FF",
+  red: "#FF0000",
+  green: "#00FF00",
+  orange: "#FFA500",
+  grey: "#808080",
+  yellow: "#FFFF00",
+  purple: "#800080",
+};
 
 const wrapDynamic = (s, w) =>
   s.replace(new RegExp(`(?![^\\n]{1,${w}}$)([^\\n]{1,${w}})\\s`, "g"), "$1\n");
@@ -31,7 +42,12 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.post("/thumbnail", upload.single("file"), async (req, res) => {
   try {
-    const { text, textAlignment = "middle", fontSize = "medium" } = req.body;
+    const {
+      text,
+      textAlignment = "middle",
+      fontSize = "medium",
+      color = "black",
+    } = req.body;
 
     if (!textAlignValues.includes(textAlignment)) {
       return res.status(400).send({
@@ -46,11 +62,12 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
       });
     }
 
-    // if (/[^\w\s.,!?-]/.test(text)) {
-    //   return res
-    //     .status(400)
-    //     .send({ error: "Text contains unsupported characters" });
-    // }
+    if (!colorValues[color]) {
+      return res.status(400).send({
+        error:
+          "Invalid color. Valid inputs = {black, white, grey, blue, red, green, orange, yellow, purple}",
+      });
+    }
 
     const inputPath = req.file.path;
     const outputPath = `uploads/processed-${req.file.filename}`;
@@ -89,7 +106,7 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
     const svgText = `
       <svg width="${metadata.width}" height="${metadata.height}" xmlns="http://www.w3.org/2000/svg">
         <style>
-          .title { fill: black; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
+          .title { fill: ${color}; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
         </style>
         <text x="50%" y="${startY}" class="title">${svgLines}</text>
       </svg>
