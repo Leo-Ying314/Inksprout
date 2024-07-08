@@ -14,6 +14,13 @@ const fontSizeValues = {
   large_extra: 500,
 };
 
+// Static Width (Plain Regex)
+const wrapStatic = (s) => s.replace(/(?![^\n]{1,32}$)([^\n]{1,32})\s/g, "$1\n");
+
+// Dynamic Width (Build Regex)
+const wrapDynamic = (s, w) =>
+  s.replace(new RegExp(`(?![^\\n]{1,${w}}$)([^\\n]{1,${w}})\\s`, "g"), "$1\n");
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, "uploads/");
@@ -52,19 +59,28 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
         .status(400)
         .send({ error: "Text contains unsupported characters" });
     }
-
     const inputPath = req.file.path;
     const outputPath = `uploads/processed-${req.file.filename}`;
 
     const image = sharp(inputPath);
     const metadata = await image.metadata();
 
+    const wrappedText = wrapDynamic(text, 32); // Adjust the width as needed
+
+    const lines = wrappedText.split('\n');
+    const lineHeight = fontSizeValues[fontSize] * 1.2; // Adjust line height as needed
+
+    const svgLines = lines.map((line, index) => {
+      const y = 50 + (index * lineHeight); // Adjust starting y position
+      return `<tspan x="50%" dy="${index === 0 ? '0' : lineHeight}" text-anchor="${textAlignment}" alignment-baseline="middle">${line}</tspan>`;
+    }).join('');
+
     const svgText = `
-      <svg width="${metadata.width}" height="${metadata.height}">
+      <svg width="${metadata.width}" height="${metadata.height}" xmlns="http://www.w3.org/2000/svg">
         <style>
           .title { fill: black; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
         </style>
-        <text x="50%" y="50%" text-anchor="${textAlignment}" class="title" dy=".3em">${text}</text>
+        <text x="50%" y="50%" class="title">${svgLines}</text>
       </svg>
     `;
 
