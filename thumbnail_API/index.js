@@ -1,9 +1,14 @@
 const express = require("express");
 const multer = require("multer");
 const sharp = require("sharp");
+const emojiRegex = require("emoji-regex");
+const bodyParser = require("body-parser");
 
 const app = express();
 const PORT = 8080;
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
 const textAlignValues = ["start", "middle", "end"];
 const fontSizeValues = {
@@ -28,16 +33,7 @@ const colorValues = {
 const wrapDynamic = (s, w) =>
   s.replace(new RegExp(`(?![^\\n]{1,${w}}$)([^\\n]{1,${w}})\\s`, "g"), "$1\n");
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.originalname);
-  },
-});
-
+const storage = multer.memoryStorage();
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 app.post("/thumbnail", upload.single("file"), async (req, res) => {
@@ -51,81 +47,91 @@ app.post("/thumbnail", upload.single("file"), async (req, res) => {
 
     if (!textAlignValues.includes(textAlignment)) {
       return res.status(400).send({
-        error: "Invalid text alignment. Valid inputs = {start, middle, end}",
+        error:
+          "/thumbnail: Invalid text alignment. Valid inputs = {start, middle, end}",
+      });
+    }
+
+    const regex = emojiRegex();
+    if (regex.test(text)) {
+      return res.status(400).send({
+        error: "/thumbnail: Text contains emojis which are not supported.",
       });
     }
 
     if (!fontSizeValues[fontSize]) {
       return res.status(400).send({
         error:
-          "Invalid font size. Valid inputs = {small_extra, small, medium, large, large_extra}",
+          "/thumbnail: Invalid font size. Valid inputs = {small_extra, small, medium, large, large_extra}",
       });
     }
 
     if (!colorValues[color]) {
       return res.status(400).send({
         error:
-          "Invalid color. Valid inputs = {black, white, grey, blue, red, green, orange, yellow, purple}",
+          "/thumbnail: Invalid color. Valid inputs = {black, white, grey, blue, red, green, orange, yellow, purple}",
       });
     }
 
-    const inputPath = req.file.path;
-    const outputPath = `uploads/processed-${req.file.filename}`;
+    const inputBuffer = req.file.buffer;
 
-    const image = sharp(inputPath);
-    const metadata = await image.metadata();
+    if (!text) {
+      res.set("Content-Type", "image/png");
+      res.send(inputBuffer);
+    } else {
+      const image = sharp(inputBuffer);
+      const metadata = await image.metadata();
 
-    const avgCharWidth = fontSizeValues[fontSize] * 0.6; // Approximate average character width
-    const maxCharsPerLine = Math.floor(metadata.width / avgCharWidth);
-    const maxLines = Math.floor(
-      metadata.height / (fontSizeValues[fontSize] * 1.2)
-    );
-    const maxLength = maxCharsPerLine * maxLines;
+      const avgCharWidth = fontSizeValues[fontSize] * 0.6; // Approximate average character width
+      const maxCharsPerLine = Math.floor(metadata.width / avgCharWidth);
+      const maxLines = Math.floor(
+        metadata.height / (fontSizeValues[fontSize] * 1.2)
+      );
+      const maxLength = maxCharsPerLine * maxLines;
 
-    if (text.length > maxLength) {
-      return res.status(400).send("Text is too long");
-    }
-
-    const wrappedText = wrapDynamic(text, maxCharsPerLine); // Adjust the width as needed
-
-    const lines = wrappedText.split("\n");
-    const lineHeight = fontSizeValues[fontSize] * 1.2; // Adjust line height as needed
-
-    const totalTextHeight = lines.length * lineHeight;
-    const startY = (metadata.height - totalTextHeight) / 2 + lineHeight / 2;
-
-    const svgLines = lines
-      .map((line, index) => {
-        const y = 50 + index * lineHeight;
-        return `<tspan x="50%" dy="${
-          index === 0 ? "0" : lineHeight
-        }" text-anchor="${textAlignment}" alignment-baseline="middle">${line}</tspan>`;
-      })
-      .join("");
-
-    const svgText = `
-      <svg width="${metadata.width}" height="${metadata.height}" xmlns="http://www.w3.org/2000/svg">
-        <style>
-          .title { fill: ${color}; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
-        </style>
-        <text x="50%" y="${startY}" class="title">${svgLines}</text>
-      </svg>
-    `;
-
-    const buffer = await image
-      .composite([{ input: Buffer.from(svgText), gravity: "center" }])
-      .toBuffer();
-
-    await sharp(buffer).toFile(outputPath);
-
-    res.download(outputPath, (err) => {
-      if (err) {
-        console.error(err);
-        res.status(500).send("Error processing image");
+      if (text.length > maxLength) {
+        return res
+          .status(400)
+          .send(
+            `/thumbnail: Text is too long. The max length is ${maxLength} characters for a ${fontSize} font size.`
+          );
       }
-    });
+
+      const wrappedText = wrapDynamic(text, maxCharsPerLine); // Adjust the width as needed
+
+      const lines = wrappedText.split("\n");
+      const lineHeight = fontSizeValues[fontSize] * 1.2; // Adjust line height as needed
+
+      const totalTextHeight = lines.length * lineHeight;
+      const startY = (metadata.height - totalTextHeight) / 2 + lineHeight / 2;
+
+      const svgLines = lines
+        .map((line, index) => {
+          const y = 50 + index * lineHeight;
+          return `<tspan x="50%" dy="${
+            index === 0 ? "0" : lineHeight
+          }" text-anchor="${textAlignment}" alignment-baseline="middle">${line}</tspan>`;
+        })
+        .join("");
+
+      const svgText = `
+        <svg width="${metadata.width}" height="${metadata.height}" xmlns="http://www.w3.org/2000/svg">
+          <style>
+            .title { fill: ${color}; font-size: ${fontSizeValues[fontSize]}px; font-family: Arial, sans-serif; }
+          </style>
+          <text x="50%" y="${startY}" class="title">${svgLines}</text>
+        </svg>
+      `;
+
+      const buffer = await image
+        .composite([{ input: Buffer.from(svgText), gravity: "center" }])
+        .toBuffer();
+
+      res.set("Content-Type", "image/png");
+      res.send(buffer);
+    }
   } catch (err) {
-    console.error(err);
+    console.error("/thumbnail: Something went wrong", err);
     res.status(500).send("Server error");
   }
 });
